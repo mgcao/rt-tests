@@ -272,6 +272,7 @@ static int latency_target_fd = -1;
 static int32_t latency_target_value = 0;
 
 //add for extra info
+static bool ignore_extra_sample = true;
 static bool has_pmc_info = false;
 static bool has_dram_info = false;
 static bool has_vmexit = false;
@@ -279,8 +280,16 @@ static bool has_vmexit = false;
 #define INFO_BUF_SIZE (128 * 1024U)
 #define INFO_BUF_SIZE_LIMIT  (INFO_BUF_SIZE - 256)
 static char extra_info_buf[INFO_BUF_SIZE];
+static uint32_t	buf_offset = 0;
+static uint32_t	ignore_times = 0;
+
 #define PMC_ON_CPU 1
 #define MIN_IGNORE_TIME 2000 // ignore 5us records
+#define MAX_CHECK_TIME 10000  // if > 10us, check its data
+
+static uint32_t min_time_check = MIN_IGNORE_TIME;
+static uint32_t max_time_check = MAX_CHECK_TIME;
+
 
 /* Latency trick
  * if the file /dev/cpu_dma_latency exists,
@@ -974,6 +983,108 @@ static int has_smi_counter(void)
 }
 #endif
 
+//for extra info sampling
+static void init_extra_sampling(void)
+{
+	if (ignore_extra_sample)
+		return;
+
+	//current set fixed cpu PMC_ON_CPU
+	has_pmc_info = pmc_init(PMC_ON_CPU);
+	if (!has_pmc_info) {
+		perror("PMU can't count!\n");
+	}
+
+	has_dram_info = dram_mon_init();
+	if (!has_dram_info) {
+		perror("DRAM no monitor info!\n");
+	}	
+	
+	has_vmexit = acrn_vmexit_init();
+	if (!has_vmexit) {
+		perror("vmexit no monitor info!\n");
+	}	
+
+	//start counter
+	if (has_pmc_info) {
+		pmc_start(PMC_ON_CPU);
+	}
+
+	buf_offset = 0;
+	ignore_times = 0;
+}
+
+static void pre_extra_sample(uint64_t *cache_refs, uint64_t *misses)
+{
+	if (ignore_extra_sample)
+		return;
+
+	if (has_dram_info) {
+		dram_mon_start();
+	}
+
+	if (has_vmexit) {
+		acrn_vmexit_begin();
+	}
+
+	if (has_pmc_info) {
+		*cache_refs = pmc_get_cache_refs();
+		*misses = pmc_get_cache_misses();
+	}
+}
+
+static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t latency, uint64_t cycles)
+{
+	if (ignore_extra_sample)
+		return;
+
+	if (has_pmc_info) {
+		uint64_t now_refs = pmc_get_cache_refs();
+		uint64_t now_misses = pmc_get_cache_misses();
+
+		//if diff < min time, not output
+		if ((latency < min_time_check) && (now_misses > misses)) {
+			ignore_times++;
+
+		} else if (((latency > max_time_check) || (now_misses > misses)) && (buf_offset < INFO_BUF_SIZE_LIMIT)) {
+			int size = sprintf(extra_info_buf + buf_offset, "cycles:%lu, latency:%lu cache-refs/misses:%lu /%lu\n", 
+				cycles, latency, now_refs - cache_refs, now_misses - misses);
+			buf_offset += size;
+
+			if (has_dram_info && (buf_offset < INFO_BUF_SIZE_LIMIT)) {
+				dram_mon_stop();
+				int size = dram_copy_dump_info(extra_info_buf + buf_offset);
+				buf_offset += size;
+			}
+		} 
+	}
+
+	//Check vmexit
+	if (has_vmexit && acrn_vmexit_end() && (offset < INFO_BUF_SIZE_LIMIT)) {
+		//acrn_vmexit_dump(stdout);
+		int size = acrn_vmexit_copy_dump_info(extra_info_buf + buf_offset);
+		buf_offset += size;
+	}
+}
+
+static void output_extra_sample(void)
+{
+	if (buf_offset >= INFO_BUF_SIZE_LIMIT) {
+		int size = sprintf(extra_info_buf + buf_offset, "\n!too much log saved, buffer to overflow!!!\n");
+		buf_offset += size;
+	}
+
+	if (ignore_times > 0) {
+		int size = sprintf(extra_info_buf + buf_offset, "cache misses ignore times: %u, level(ns): %u\n",
+			ignore_times, min_time_check);
+		buf_offset += size;
+	}
+
+	if (buf_offset > 0) {
+		fputs(extra_info_buf, stdout);
+	}
+}
+
 /*
  * timer thread
  *
@@ -1001,9 +1112,6 @@ static void *timerthread(void *param)
 	cpu_set_t mask;
 	pthread_t thread;
 	unsigned long smi_now, smi_old;
-
-	uint32_t offset = 0;
-	uint32_t ignore_times = 0;
 
 	/* if we're running in numa mode, set our memory node */
 	if (par->node != -1)
@@ -1105,11 +1213,7 @@ static void *timerthread(void *param)
 	}
 
 	stat->threadstarted++;
-
-	if (has_pmc_info) {
-		pmc_start(PMC_ON_CPU);
-	}
-			
+		
 	while (!shutdown) {
 
 		uint64_t diff;
@@ -1118,19 +1222,8 @@ static void *timerthread(void *param)
 
 		uint64_t cache_refs = 0, misses = 0;
 		
-		if (has_dram_info) {
-			dram_mon_start();
-		}
-
-		if (has_vmexit) {
-			acrn_vmexit_begin();
-		}
-
-		if (has_pmc_info) {
-			cache_refs = pmc_get_cache_refs();
-			misses = pmc_get_cache_misses();
-		}
-
+		pre_extra_sample(&cache_refs, &misses);
+	
 		/* Wait for next period */
 		switch (par->mode) {
 		case MODE_CYCLIC:
@@ -1246,34 +1339,7 @@ static void *timerthread(void *param)
 				stat->smis[stat->cycles & par->bufmsk] = diff_smi;
 		}
 
-		if (has_pmc_info) {
-			uint64_t now_refs = pmc_get_cache_refs();
-			uint64_t now_misses = pmc_get_cache_misses();
-
-			//if diff < min time, not output
-			if (diff < MIN_IGNORE_TIME) {
-				ignore_times++;
-
-			} else if ((now_misses > misses) && (offset < INFO_BUF_SIZE_LIMIT)) {
-				int size = sprintf(extra_info_buf + offset, "cycles:%lu, latency:%lu cache-refs/misses:%lu /%lu\n", 
-					stat->cycles, diff, now_refs - cache_refs, now_misses - misses);
-				offset += size;
-
-				if (has_dram_info && (offset < INFO_BUF_SIZE_LIMIT)) {
-					dram_mon_stop();
-					int size = dram_copy_dump_info(extra_info_buf + offset);
-					offset += size;
-				}
-		
-			}
-		}
-
-		//Check cycles as loops
-		if (has_vmexit && acrn_vmexit_end() && (offset < INFO_BUF_SIZE_LIMIT)) {
-			//acrn_vmexit_dump(stdout);
-			int size = acrn_vmexit_copy_dump_info(extra_info_buf + offset);
-			offset += size;
-		}
+		post_extra_sample(cache_refs, misses, diff, stat->cycles);
 
 		/* Update the histogram */
 		if (histogram) {
@@ -1307,20 +1373,7 @@ static void *timerthread(void *param)
 			break;
 	}
 
-	if (offset >= INFO_BUF_SIZE_LIMIT) {
-		int size = sprintf(extra_info_buf + offset, "\n!too much log saved, buffer to overflow!!!\n");
-		offset += size;
-	}
-
-	if (ignore_times > 0) {
-		int size = sprintf(extra_info_buf + offset, "cache misses ignore times: %u, level(us): %u\n",
-			ignore_times, MIN_IGNORE_TIME);
-		offset += size;
-	}
-
-	if (offset > 0) {
-		fputs(extra_info_buf, stdout);
-	}
+	output_extra_sample();
 
 out:
 	if (par->mode == MODE_CYCLIC)
@@ -1446,7 +1499,10 @@ static void display_help(int error)
 	       "                           format: n:c:v n=tasknum c=count v=value in us\n"
 	       "-w       --wakeup          task wakeup tracing (used with -b)\n"
 	       "-W       --wakeuprt        rt task wakeup tracing (used with -b)\n"
-	       "	 --dbg_cyclictest  print info useful for debugging cyclictest\n",
+	       "	 --dbg_cyclictest  print info useful for debugging cyclictest\n"
+		   "	 --extra_sample    set to sample extra info\n"
+		   "	 --min_check [min-time(ns)]  set to sample extra info: min-check time\n"
+		   "	 --max_check [max-time(ns)]  set to sample extra info: max-check time\n",
 	       tracers
 		);
 	if (error)
@@ -1575,6 +1631,7 @@ enum option_values {
 	OPT_TRIGGER_NODES, OPT_UNBUFFERED, OPT_NUMA, OPT_VERBOSE, OPT_WAKEUP,
 	OPT_WAKEUPRT, OPT_DBGCYCLIC, OPT_POLICY, OPT_HELP, OPT_NUMOPTS,
 	OPT_ALIGNED, OPT_SECALIGNED, OPT_LAPTOP, OPT_SMI, OPT_TRACEMARK,
+	OPT_EXTRA_SAMPLE, OPT_MIN_CHECK, OPT_MAX_CHECK,
 };
 
 /* Process commandline options */
@@ -1638,6 +1695,9 @@ static void process_options (int argc, char *argv[], int max_cpus)
 			{"wakeuprt",         no_argument,       NULL, OPT_WAKEUPRT },
 			{"dbg_cyclictest",   no_argument,       NULL, OPT_DBGCYCLIC },
 			{"policy",           required_argument, NULL, OPT_POLICY },
+			{"extra_sample",     no_argument,       NULL, OPT_EXTRA_SAMPLE},
+			{"min_check",        required_argument, NULL, OPT_MIN_CHECK},
+			{"max_check",        required_argument, NULL, OPT_MAX_CHECK},
 			{"help",             no_argument,       NULL, OPT_HELP },
 			{NULL, 0, NULL, 0}
 		};
@@ -1874,6 +1934,17 @@ static void process_options (int argc, char *argv[], int max_cpus)
 		case OPT_TRACEMARK:
 			notrace = 1; /* using --tracemark implies --notrace */
 			trace_marker = 1; break;
+		//for extra info sampling
+		case OPT_EXTRA_SAMPLE:
+			ignore_extra_sample = false;
+			break;
+		case OPT_MIN_CHECK:
+			min_time_check = atoi(optarg);
+			break;
+		case OPT_MAX_CHECK:
+			max_time_check = atoi(optarg);
+			break;
+		
 		}
 	}
 
@@ -2277,21 +2348,7 @@ int main(int argc, char **argv)
 
 	process_options(argc, argv, max_cpus);
 
-	//current set fixed cpu PMC_ON_CPU
-	has_pmc_info = pmc_init(PMC_ON_CPU);
-	if (!has_pmc_info) {
-		perror("PMU can't count!\n");
-	}
-
-	has_dram_info = dram_mon_init();
-	if (!has_dram_info) {
-		perror("DRAM no monitor info!\n");
-	}	
-	
-	has_vmexit = acrn_vmexit_init();
-	if (!has_vmexit) {
-		perror("vmexit no monitor info!\n");
-	}	
+	init_extra_sampling();
 
 	if (check_privs())
 		exit(EXIT_FAILURE);
