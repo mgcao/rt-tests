@@ -276,11 +276,10 @@ static bool has_pmc_info = false;
 static bool has_dram_info = false;
 static bool has_vmexit = false;
 
-#define INFO_BUF_SIZE (64 * 1024U)
+#define INFO_BUF_SIZE (128 * 1024U)
 #define INFO_BUF_SIZE_LIMIT  (INFO_BUF_SIZE - 256)
 static char extra_info_buf[INFO_BUF_SIZE];
 #define PMC_ON_CPU 1
-#define COUNT_PER_LOOPS 1000m
 #define MIN_IGNORE_TIME 2000 // ignore 5us records
 
 /* Latency trick
@@ -1320,7 +1319,7 @@ static void *timerthread(void *param)
 	}
 
 	if (offset > 0) {
-		fprintf(stdout, extra_info_buf);
+		fputs(extra_info_buf, stdout);
 	}
 
 out:

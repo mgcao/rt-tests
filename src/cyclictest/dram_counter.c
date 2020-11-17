@@ -113,12 +113,10 @@ void dram_mon_dump(FILE *fd)
 
 int dram_copy_dump_info(char *buf)
 {
-	int size = sprintf(buf, "DRAM: GPU %8lu KB  CPU %8lu KB  IO %8lu KB  All-Read %8lu KB All-Write %8lu KB\n",
+	int size = sprintf(buf, "DRAM(KB): GPU %lu CPU %lu IO %lu\n",
 		mem_bw_kbyte[0],
 		mem_bw_kbyte[1],
-		mem_bw_kbyte[2],
-		mem_bw_kbyte[3], 
-        mem_bw_kbyte[4]);
+		mem_bw_kbyte[2]);
 
 	return size;
 }
