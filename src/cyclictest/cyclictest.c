@@ -26,6 +26,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <linux/unistd.h>
+#include <stdbool.h>
 
 #include <sys/prctl.h>
 #include <sys/stat.h>
@@ -39,6 +40,10 @@
 #include "rt_numa.h"
 
 #include "rt-utils.h"
+
+#include "pmc.h"
+#include "dram_counter.h"
+#include "acrn_vmexit.h"
 
 #include <bionic.h>
 
@@ -265,6 +270,18 @@ static void print_stat(FILE *fp, struct thread_param *par, int index, int verbos
 
 static int latency_target_fd = -1;
 static int32_t latency_target_value = 0;
+
+//add for extra info
+static bool has_pmc_info = false;
+static bool has_dram_info = false;
+static bool has_vmexit = false;
+
+#define INFO_BUF_SIZE (64 * 1024U)
+#define INFO_BUF_SIZE_LIMIT  (INFO_BUF_SIZE - 256)
+static char extra_info_buf[INFO_BUF_SIZE];
+#define PMC_ON_CPU 1
+#define COUNT_PER_LOOPS 1000m
+#define MIN_IGNORE_TIME 2000 // ignore 5us records
 
 /* Latency trick
  * if the file /dev/cpu_dma_latency exists,
@@ -986,6 +1003,9 @@ static void *timerthread(void *param)
 	pthread_t thread;
 	unsigned long smi_now, smi_old;
 
+	uint32_t offset = 0;
+	uint32_t ignore_times = 0;
+
 	/* if we're running in numa mode, set our memory node */
 	if (par->node != -1)
 		rt_numa_set_numa_run_on_node(par->node, par->cpu);
@@ -1087,11 +1107,30 @@ static void *timerthread(void *param)
 
 	stat->threadstarted++;
 
+	if (has_pmc_info) {
+		pmc_start(PMC_ON_CPU);
+	}
+			
 	while (!shutdown) {
 
 		uint64_t diff;
 		unsigned long diff_smi = 0;
 		int sigs, ret;
+
+		uint64_t cache_refs = 0, misses = 0;
+		
+		if (has_dram_info) {
+			dram_mon_start();
+		}
+
+		if (has_vmexit) {
+			acrn_vmexit_begin();
+		}
+
+		if (has_pmc_info) {
+			cache_refs = pmc_get_cache_refs();
+			misses = pmc_get_cache_misses();
+		}
 
 		/* Wait for next period */
 		switch (par->mode) {
@@ -1208,6 +1247,35 @@ static void *timerthread(void *param)
 				stat->smis[stat->cycles & par->bufmsk] = diff_smi;
 		}
 
+		if (has_pmc_info) {
+			uint64_t now_refs = pmc_get_cache_refs();
+			uint64_t now_misses = pmc_get_cache_misses();
+
+			//if diff < min time, not output
+			if (diff < MIN_IGNORE_TIME) {
+				ignore_times++;
+
+			} else if ((now_misses > misses) && (offset < INFO_BUF_SIZE_LIMIT)) {
+				int size = sprintf(extra_info_buf + offset, "cycles:%lu, latency:%lu cache-refs/misses:%lu /%lu\n", 
+					stat->cycles, diff, now_refs - cache_refs, now_misses - misses);
+				offset += size;
+
+				if (has_dram_info && (offset < INFO_BUF_SIZE_LIMIT)) {
+					dram_mon_stop();
+					int size = dram_copy_dump_info(extra_info_buf + offset);
+					offset += size;
+				}
+		
+			}
+		}
+
+		//Check cycles as loops
+		if (has_vmexit && acrn_vmexit_end() && (offset < INFO_BUF_SIZE_LIMIT)) {
+			//acrn_vmexit_dump(stdout);
+			int size = acrn_vmexit_copy_dump_info(extra_info_buf + offset);
+			offset += size;
+		}
+
 		/* Update the histogram */
 		if (histogram) {
 			if (diff >= histogram) {
@@ -1238,6 +1306,21 @@ static void *timerthread(void *param)
 
 		if (par->max_cycles && par->max_cycles == stat->cycles)
 			break;
+	}
+
+	if (offset >= INFO_BUF_SIZE_LIMIT) {
+		int size = sprintf(extra_info_buf + offset, "\n!too much log saved, buffer to overflow!!!\n");
+		offset += size;
+	}
+
+	if (ignore_times > 0) {
+		int size = sprintf(extra_info_buf + offset, "cache misses ignore times: %u, level(us): %u\n",
+			ignore_times, MIN_IGNORE_TIME);
+		offset += size;
+	}
+
+	if (offset > 0) {
+		fprintf(stdout, extra_info_buf);
 	}
 
 out:
@@ -2194,6 +2277,22 @@ int main(int argc, char **argv)
 	int status;
 
 	process_options(argc, argv, max_cpus);
+
+	//current set fixed cpu PMC_ON_CPU
+	has_pmc_info = pmc_init(PMC_ON_CPU);
+	if (!has_pmc_info) {
+		perror("PMU can't count!\n");
+	}
+
+	has_dram_info = dram_mon_init();
+	if (!has_dram_info) {
+		perror("DRAM no monitor info!\n");
+	}	
+	
+	has_vmexit = acrn_vmexit_init();
+	if (!has_vmexit) {
+		perror("vmexit no monitor info!\n");
+	}	
 
 	if (check_privs())
 		exit(EXIT_FAILURE);
