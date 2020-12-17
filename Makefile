@@ -100,7 +100,7 @@ $(OBJDIR):
 # Include dependency files, automatically generate them if needed.
 -include $(addprefix $(OBJDIR)/,$(sources:.c=.d))
 
-EXTRA_OBJ_FOR_CYCLICTEST=$(OBJDIR)/acrn_vmexit.o $(OBJDIR)/dram_counter.o $(OBJDIR)/msr.o $(OBJDIR)/pmc.o
+EXTRA_OBJ_FOR_CYCLICTEST=$(OBJDIR)/acrn_vmexit.o $(OBJDIR)/dram_counter.o $(OBJDIR)/msr.o $(OBJDIR)/pmc.o $(OBJDIR)/post_pmc.o
 
 cyclictest: $(OBJDIR)/cyclictest.o $(EXTRA_OBJ_FOR_CYCLICTEST) $(OBJDIR)/librttest.a
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LIBS) $(RTTESTLIB) $(NUMA_LIBS) $(EXTRA_OBJ_FOR_CYCLICTEST)
