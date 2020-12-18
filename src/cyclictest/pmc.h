@@ -15,8 +15,10 @@ void pmc_read_start(void);
 void pmc_read_stop(void);
 
 
-#define USE_POST_PMC 0
-void pmc_post_start();
+#define USE_POST_PMC 1
+void pmc_post_start(int cpu);
+void pmc_post_stop(int cpu);
+
 void pmc_post_read_start(void);
 void pmc_post_read_stop(void);
 

@@ -1008,9 +1008,11 @@ static void init_extra_sampling(void)
 	//start counter
 	if (has_pmc_info) {
 #if USE_POST_PMC		
-	pmc_post_start();
+	pmc_post_start(PMC_ON_CPU);
+	printf("Post PMC build, note: need run PMC script first!\n");
 #else
 	pmc_start(PMC_ON_CPU);
+	printf("normal PMC build!\n");
 #endif
 	}
 
@@ -1096,7 +1098,7 @@ static void output_extra_sample(void)
 {
 	if (has_pmc_info) {
 #if USE_POST_PMC		
-	pmc_post_stop();
+	pmc_post_stop(PMC_ON_CPU);
 #else
 	pmc_stop(PMC_ON_CPU);
 #endif

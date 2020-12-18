@@ -9,10 +9,12 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "msr.h"
 #include "pmc.h"
 
 #define PMC_MAX 8
 #define TYPE_FIXED_CTR  		(1ULL << 30)
+#define PERF_GLOBAL_CTRL		0x38f /* Global CTRL MSR */
 
 static uint64_t g_start[PMC_MAX];
 static uint64_t g_stop[PMC_MAX];
@@ -73,7 +75,12 @@ int pmc_post_dump_info(char *buf, uint32_t times, uint32_t latency)
 	return size;
 }
 
-void pmc_post_start()
+void pmc_post_start(int cpu)
 {
-	
+	wrmsr_on_cpu(PERF_GLOBAL_CTRL, cpu, 0x7000000ff); //start 3 fixed and 8 general counter
+}
+
+void pmc_post_stop(int cpu)
+{
+	wrmsr_on_cpu(PERF_GLOBAL_CTRL, cpu, 0); //stop all counter
 }
