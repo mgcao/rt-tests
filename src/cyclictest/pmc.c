@@ -39,7 +39,7 @@
 
 //for PMU (Performance Monitor Unit counter), port from Kaige's PMU module code
 
-#define PMC_MAX 8
+#define PMC_MAX 7
 
 #define PERF_GLOBAL_CTRL		0x38f /* Global CTRL MSR */
 #define PERF_FIXED_CTR0			0x309 /* Fixed counter MSR for retired instructions */
@@ -63,7 +63,7 @@
 #define CPU_BRANCHES_IDX         	2
 #define CPU_BRANCH_MISSES_IDX    	3
 
-#define COUNTER_INITIAL_VAL 		0x800000000001ULL
+#define COUNTER_INITIAL_VAL 	0  //	0x800000000001ULL
 #define TYPE_FIXED_CTR  		(1ULL << 30)
 
 #define CACHE_REFERENCES_EVENT_SELECT   0x2e
@@ -85,6 +85,9 @@ static uint64_t cache_references;
 static uint64_t cache_misses;
 static uint64_t branches;
 static uint64_t branch_misses;
+
+static uint64_t g_start[PMC_MAX];
+static uint64_t g_stop[PMC_MAX];
 
 static int cpu_index = -1;
 
@@ -240,24 +243,56 @@ void pmc_stop(int cpu)
 	stop_gp_perf_counter(CPU_BRANCH_MISSES_IDX, &branch_misses);
 }
 
-uint64_t pmc_get_cache_refs(void)
+static uint64_t pmc_read_as_index(uint32_t idx)
 {
 	uint64_t val;
 
-	val = _x86_pmc_read(CPU_CACHE_REFERENCES_IDX);
+	val = _x86_pmc_read(idx);
 	val -= COUNTER_INITIAL_VAL;
 
-	return val;
+	return val;	
+}
+
+uint64_t pmc_get_cache_refs(void)
+{
+	return pmc_read_as_index(CPU_CACHE_REFERENCES_IDX);
 }
 
 uint64_t pmc_get_cache_misses(void)
 {
-	uint64_t val;
+	return pmc_read_as_index(CPU_CACHE_MISSES_IDX);
+}
 
-	val = _x86_pmc_read(CPU_CACHE_MISSES_IDX);
-	val -= COUNTER_INITIAL_VAL;
+void pmc_read_start(void)
+{
+	g_start[0] = pmc_read_as_index(RETIRED_INSTRUCTION_IDX | TYPE_FIXED_CTR);
+	g_start[1] = pmc_read_as_index(CPU_CYCLES_IDX | TYPE_FIXED_CTR);
+	g_start[2] = pmc_read_as_index(CPU_REF_CYCLES_IDX | TYPE_FIXED_CTR);
 
-	return val;
+	g_start[3] = pmc_read_as_index(CPU_CACHE_REFERENCES_IDX);
+	g_start[4] = pmc_read_as_index(CPU_CACHE_MISSES_IDX);
+	g_start[5] = pmc_read_as_index(CPU_BRANCHES_IDX);
+	g_start[6] = pmc_read_as_index(CPU_BRANCH_MISSES_IDX);
+}
+
+void pmc_read_stop(void)
+{
+	g_stop[0] = pmc_read_as_index(RETIRED_INSTRUCTION_IDX | TYPE_FIXED_CTR);
+	g_stop[1] = pmc_read_as_index(CPU_CYCLES_IDX | TYPE_FIXED_CTR);
+	g_stop[2] = pmc_read_as_index(CPU_REF_CYCLES_IDX | TYPE_FIXED_CTR);
+
+	g_stop[3] = pmc_read_as_index(CPU_CACHE_REFERENCES_IDX);
+	g_stop[4] = pmc_read_as_index(CPU_CACHE_MISSES_IDX);
+	g_stop[5] = pmc_read_as_index(CPU_BRANCHES_IDX);
+	g_stop[6] = pmc_read_as_index(CPU_BRANCH_MISSES_IDX);
+
+	cpu_retired_instructions = g_stop[0] - g_start[0];
+	cpu_cycles = g_stop[1] - g_start[1];
+	cpu_ref_cycles = g_stop[2] - g_start[2];
+	cache_references = g_stop[3] - g_start[3];
+	cache_misses = g_stop[4] - g_start[4];
+	branches = g_stop[5] - g_start[5];
+	branch_misses = g_stop[6] - g_start[6];
 }
 
 void pmc_report(FILE *fd, uint32_t times)
@@ -277,6 +312,15 @@ void pmc_report(FILE *fd, uint32_t times)
 		times, cpu_retired_instructions, cpu_cycles, cpu_ref_cycles, cache_references, cache_misses, branches, branch_misses);
 #endif
 }
+
+int pmc_dump_info(char *buf, uint32_t times, uint32_t latency)
+{
+	int size = sprintf(buf, "latency:%8u times:%8u  retired=%8lu cycles/refs:%8lu /%8lu  cache-ref/miss:%8lu /%8lu branch/miss:%8lu /%8lu\n",
+		latency, times, cpu_retired_instructions, cpu_cycles, cpu_ref_cycles, cache_references, cache_misses, branches, branch_misses);
+
+	return size;
+}
+
 
 #define RDPMC_PATH "/sys/devices/cpu/rdpmc"
 

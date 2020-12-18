@@ -989,15 +989,11 @@ static void init_extra_sampling(void)
 	if (ignore_extra_sample)
 		return;
 
-#if USE_POST_PMC
-	has_pmc_info = true;
-#else
 	//current set fixed cpu PMC_ON_CPU
 	has_pmc_info = pmc_init(PMC_ON_CPU);
 	if (!has_pmc_info) {
 		perror("PMU can't count!\n");
 	}
-#endif
 
 	has_dram_info = dram_mon_init();
 	if (!has_dram_info) {
@@ -1012,9 +1008,9 @@ static void init_extra_sampling(void)
 	//start counter
 	if (has_pmc_info) {
 #if USE_POST_PMC		
-		
+	pmc_post_start();
 #else
-		pmc_start(PMC_ON_CPU);
+	pmc_start(PMC_ON_CPU);
 #endif
 	}
 
@@ -1041,6 +1037,7 @@ static void pre_extra_sample(uint64_t *cache_refs, uint64_t *misses)
 		*misses = 0;
 		pmc_post_read_start();
 	#else
+		pmc_read_start();
 		*cache_refs = pmc_get_cache_refs();
 		*misses = pmc_get_cache_misses();
 	#endif
@@ -1059,8 +1056,9 @@ static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t lat
 		uint64_t now_misses = 0;
 		pmc_post_read_stop();
 	#else
-		uint64_t now_refs = pmc_get_cache_refs();
+		//uint64_t now_refs = pmc_get_cache_refs();
 		uint64_t now_misses = pmc_get_cache_misses();
+		pmc_read_stop();
 	#endif
 
 		//if diff < min time, not output
@@ -1070,10 +1068,11 @@ static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t lat
 		} else if (((latency > max_time_check) || (now_misses > misses)) && (buf_offset < INFO_BUF_SIZE_LIMIT)) {
 
 		#if USE_POST_PMC
-			int size = pmc_post_dump_info(extra_info_buf + buf_offset, cycles);
+			int size = pmc_post_dump_info(extra_info_buf + buf_offset, cycles, latency);
 		#else
-			int size = sprintf(extra_info_buf + buf_offset, "cycles:%lu, latency:%lu cache-refs/misses:%lu /%lu\n", 
-				cycles, latency, now_refs - cache_refs, now_misses - misses);
+			//int size = sprintf(extra_info_buf + buf_offset, "cycles:%lu, latency:%lu cache-refs/misses:%lu /%lu\n", 
+			//	cycles, latency, now_refs - cache_refs, now_misses - misses);
+			int size = pmc_dump_info(extra_info_buf + buf_offset, cycles, latency);
 		#endif
 			buf_offset += size;
 
@@ -1095,6 +1094,14 @@ static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t lat
 
 static void output_extra_sample(void)
 {
+	if (has_pmc_info) {
+#if USE_POST_PMC		
+	pmc_post_stop();
+#else
+	pmc_stop(PMC_ON_CPU);
+#endif
+	}
+
 	if (buf_offset >= INFO_BUF_SIZE_LIMIT) {
 		int size = sprintf(extra_info_buf + buf_offset, "\n!too much log saved, buffer to overflow!!!\n");
 		buf_offset += size;

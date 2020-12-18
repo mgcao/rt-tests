@@ -21,24 +21,23 @@ static uint64_t delta[PMC_MAX];
 static uint64_t pmc_inst_start;
 static uint64_t pmc_inst_stop;
 
-static inline void native_rdpmc(uint32_t ecx, volatile uint64_t * result)
+
+static inline uint64_t native_rdpmc(uint32_t idx)
 {
-	asm volatile(
-		"rdpmc               ;\n\t"
-		"mov %%eax, (%0)     ;\n\t"
-		"mov %%edx,4(%0)     ;\n\t"
-		:
-		:"r"(result),"c"(ecx)
-		:"eax","edx","memory");
+    uint32_t lo, hi;
+
+    __asm__ volatile("rdpmc" : "=a" (lo), "=d" (hi) : "c" (idx));
+
+    return ((uint64_t)lo) | (((uint64_t)hi) << 32);
 }
 
 void pmc_post_read_start(void)
 {
 	int cnt;
 
-	native_rdpmc(TYPE_FIXED_CTR, &pmc_inst_start);
+	pmc_inst_start = native_rdpmc(TYPE_FIXED_CTR);
 	for( cnt = 0; cnt < PMC_MAX; cnt++) {
-		native_rdpmc(cnt, &g_start[cnt]);
+		g_start[cnt] = native_rdpmc(cnt);
 	}
 }
 
@@ -46,9 +45,9 @@ void pmc_post_read_stop(void)
 {
 	int cnt;
 
-	native_rdpmc(TYPE_FIXED_CTR, &pmc_inst_stop);
+	pmc_inst_stop = native_rdpmc(TYPE_FIXED_CTR);
 	for( cnt = 0; cnt < PMC_MAX; cnt++) {
-		native_rdpmc(cnt, &g_stop[cnt]);
+		g_stop[cnt] = native_rdpmc(cnt);
 	}
 
     for( cnt = 0; cnt < PMC_MAX; cnt++) {
@@ -64,11 +63,17 @@ void pmc_post_report(FILE *fd, uint32_t times)
         delta[6], delta[7]);
 }
 
-int pmc_post_dump_info(char *buf, uint32_t times)
+int pmc_post_dump_info(char *buf, uint32_t times, uint32_t latency)
 {
-	int size = sprintf(buf, "times:%8u inst:%8lu [0]:%8lu [1]:%8lu [2]:%8lu [3]:%8lu [4]:%8lu [5]:%8lu [6]:%8lu [7]:%8lu\n",
-		times, pmc_inst_stop - pmc_inst_start, delta[0], delta[1], delta[2], delta[3], delta[4], delta[5],
+	int size = sprintf(buf, "latency:%8u times:%8u inst:%8lu [0]:%8lu [1]:%8lu [2]:%8lu [3]:%8lu [4]:%8lu [5]:%8lu "
+		"[6]:%8lu [7]:%8lu\n",
+		latency, times, pmc_inst_stop - pmc_inst_start, delta[0], delta[1], delta[2], delta[3], delta[4], delta[5],
         delta[6], delta[7]);
 
 	return size;
+}
+
+void pmc_post_start()
+{
+	
 }
