@@ -289,7 +289,9 @@ static uint32_t	ignore_times = 0;
 
 static uint32_t min_time_check = MIN_IGNORE_TIME;
 static uint32_t max_time_check = MAX_CHECK_TIME;
-
+static uint32_t random_sample_count = 0;
+static uint32_t random_count_interval = 1000;
+static uint64_t next_random_sample = 0;
 
 /* Latency trick
  * if the file /dev/cpu_dma_latency exists,
@@ -1018,6 +1020,15 @@ static void init_extra_sampling(void)
 
 	buf_offset = 0;
 	ignore_times = 0;
+
+	//for ramdom sampling
+	if (random_sample_count > 0) {
+		if (duration > 0) {
+			random_count_interval = (duration * 1000) / random_sample_count;
+		}
+	} 
+
+	printf("random_sample_count: %d, interval: %d\n", random_sample_count, random_count_interval);
 }
 
 static void pre_extra_sample(uint64_t *cache_refs, uint64_t *misses)
@@ -1063,6 +1074,17 @@ static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t lat
 		pmc_read_stop();
 	#endif
 
+		bool sampled_pmc = false;
+
+		//for ramdom sample,  if random sample set, ingore min/max setting
+		if ((random_sample_count > 0) && (next_random_sample == cycles) && (buf_offset < INFO_BUF_SIZE_LIMIT)) {
+		#if USE_POST_PMC
+			int size = pmc_post_dump_info(extra_info_buf + buf_offset, cycles, latency);
+			buf_offset += size;
+			next_random_sample += random_count_interval;
+			sampled_pmc = true;
+		#endif	
+		} else
 		//if diff < min time, not output
 		if (latency < min_time_check) {
 			ignore_times++;
@@ -1077,13 +1099,15 @@ static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t lat
 			int size = pmc_dump_info(extra_info_buf + buf_offset, cycles, latency);
 		#endif
 			buf_offset += size;
-
-			if (has_dram_info && (buf_offset < INFO_BUF_SIZE_LIMIT)) {
-				dram_mon_stop();
-				int size = dram_copy_dump_info(extra_info_buf + buf_offset);
-				buf_offset += size;
-			}
+			sampled_pmc = true;
 		} 
+
+			//for DRAM info
+		if (sampled_pmc && has_dram_info && (buf_offset < INFO_BUF_SIZE_LIMIT)) {
+			dram_mon_stop();
+			int size = dram_copy_dump_info(extra_info_buf + buf_offset);
+			buf_offset += size;
+		}
 	}
 
 	//Check vmexit
@@ -1248,7 +1272,7 @@ static void *timerthread(void *param)
 	}
 
 	stat->threadstarted++;
-		
+	
 	while (!shutdown) {
 
 		uint64_t diff;
@@ -1666,7 +1690,7 @@ enum option_values {
 	OPT_TRIGGER_NODES, OPT_UNBUFFERED, OPT_NUMA, OPT_VERBOSE, OPT_WAKEUP,
 	OPT_WAKEUPRT, OPT_DBGCYCLIC, OPT_POLICY, OPT_HELP, OPT_NUMOPTS,
 	OPT_ALIGNED, OPT_SECALIGNED, OPT_LAPTOP, OPT_SMI, OPT_TRACEMARK,
-	OPT_EXTRA_SAMPLE, OPT_MIN_CHECK, OPT_MAX_CHECK,
+	OPT_EXTRA_SAMPLE, OPT_MIN_CHECK, OPT_MAX_CHECK, OPT_RANDOM_SAMPLE,
 };
 
 /* Process commandline options */
@@ -1733,6 +1757,7 @@ static void process_options (int argc, char *argv[], int max_cpus)
 			{"extra_sample",     no_argument,       NULL, OPT_EXTRA_SAMPLE},
 			{"min_check",        required_argument, NULL, OPT_MIN_CHECK},
 			{"max_check",        required_argument, NULL, OPT_MAX_CHECK},
+			{"random_sample",    required_argument, NULL, OPT_RANDOM_SAMPLE},
 			{"help",             no_argument,       NULL, OPT_HELP },
 			{NULL, 0, NULL, 0}
 		};
@@ -1978,6 +2003,9 @@ static void process_options (int argc, char *argv[], int max_cpus)
 			break;
 		case OPT_MAX_CHECK:
 			max_time_check = atoi(optarg);
+			break;
+		case OPT_RANDOM_SAMPLE:
+			random_sample_count = atoi(optarg);
 			break;
 		
 		}
