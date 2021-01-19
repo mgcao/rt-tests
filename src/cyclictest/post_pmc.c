@@ -13,6 +13,8 @@
 #include "pmc.h"
 
 #define PMC_MAX 8
+//#define PMC_MAX 4  //EHL just 4 general counters
+
 #define TYPE_FIXED_CTR0  		(1ULL << 30)
 #define TYPE_FIXED_CTR1  		((1ULL << 30) | 1)
 #define TYPE_FIXED_CTR2  		((1ULL << 30) | 2)
@@ -72,9 +74,11 @@ void pmc_post_read_stop(void)
 
 void pmc_post_report(FILE *fd, uint32_t times)
 {
+#if PMC_MAX == 8 // just for normal case
 	fprintf(fd, "times:%8u inst:%8lu [0]:%8lu [1]:%8lu [2]:%8lu [3]:%8lu [4]:%8lu [5]:%8lu [6]:%8lu [7]:%8lu\n",
 		times, pmc_inst_stop - pmc_inst_start, delta[0], delta[1], delta[2], delta[3], delta[4], delta[5],
         delta[6], delta[7]);
+#endif
 }
 
 
@@ -83,10 +87,17 @@ void pmc_post_report(FILE *fd, uint32_t times)
 int pmc_post_dump_info(char *buf, uint32_t times, uint32_t latency)
 {
 #if FOR_EXCEL_FORMAT
+#if PMC_MAX == 8
 	int size = sprintf(buf, "%u\t%u\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n",
 		latency, times, pmc_inst_stop - pmc_inst_start, pmc_cycles_stop - pmc_cycles_start,
 		pmc_tsc_stop - pmc_tsc_start, delta[0], delta[1], delta[2], delta[3], delta[4], delta[5],
         delta[6], delta[7]);
+#else
+	int size = sprintf(buf, "%u\t%u\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n",
+		latency, times, pmc_inst_stop - pmc_inst_start, pmc_cycles_stop - pmc_cycles_start,
+		pmc_tsc_stop - pmc_tsc_start, delta[0], delta[1], delta[2], delta[3]);
+#endif
+
 #else
 	int size = sprintf(buf, "latency:%8u times:%8u inst:%8lu [0]:%8lu [1]:%8lu [2]:%8lu [3]:%8lu [4]:%8lu [5]:%8lu "
 		"[6]:%8lu [7]:%8lu\n",
@@ -98,7 +109,11 @@ int pmc_post_dump_info(char *buf, uint32_t times, uint32_t latency)
 
 void pmc_post_start(int cpu)
 {
+#if PMC_MAX == 4
+	wrmsr_on_cpu(PERF_GLOBAL_CTRL, cpu, 0x70000000f); //start 3 fixed and 4 general counter
+#else
 	wrmsr_on_cpu(PERF_GLOBAL_CTRL, cpu, 0x7000000ff); //start 3 fixed and 8 general counter
+#endif
 }
 
 void pmc_post_stop(int cpu)
