@@ -287,6 +287,9 @@ static uint32_t	ignore_times = 0;
 #define MIN_IGNORE_TIME 2000 // ignore 5us records
 #define MAX_CHECK_TIME 10000  // if > 10us, check its data
 
+//used to control if sample vmexit and DRAM if can't dynamically check
+#define JUST_SAMPLE_PMC 1
+
 static uint32_t min_time_check = MIN_IGNORE_TIME;
 static uint32_t max_time_check = MAX_CHECK_TIME;
 static uint32_t random_sample_count = 0;
@@ -997,6 +1000,7 @@ static void init_extra_sampling(void)
 		perror("PMU can't count!\n");
 	}
 
+#if (!JUST_SAMPLE_PMC)
 	has_dram_info = dram_mon_init();
 	if (!has_dram_info) {
 		perror("DRAM no monitor info!\n");
@@ -1006,6 +1010,7 @@ static void init_extra_sampling(void)
 	if (!has_vmexit) {
 		perror("vmexit no monitor info!\n");
 	}	
+#endif
 
 	//start counter
 	if (has_pmc_info) {

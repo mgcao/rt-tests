@@ -12,8 +12,8 @@
 #include "msr.h"
 #include "pmc.h"
 
-#define PMC_MAX 8
-//#define PMC_MAX 4  //EHL just 4 general counters
+//#define PMC_MAX 8
+#define PMC_MAX 4  //EHL just 4 general counters
 
 #define TYPE_FIXED_CTR0  		(1ULL << 30)
 #define TYPE_FIXED_CTR1  		((1ULL << 30) | 1)
