@@ -1565,6 +1565,7 @@ static void display_help(int error)
 	       "-W       --wakeuprt        rt task wakeup tracing (used with -b)\n"
 	       "	 --dbg_cyclictest  print info useful for debugging cyclictest\n"
 		   "	 --extra_sample    set to sample extra info\n"
+		   "	 --random_sample   set sample data in period counts\n"
 		   "	 --min_check [min-time(ns)]  set to sample extra info: min-check time\n"
 		   "	 --max_check [max-time(ns)]  set to sample extra info: max-check time\n",
 	       tracers
