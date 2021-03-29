@@ -1,7 +1,7 @@
 
 
-# L2_RQSTS.MISS, CFL/Sky-L, Kaby-L (whl same)
-wrmsr -p 1 0x186 0x433f24
+# FETCH_STALL.ALL
+wrmsr -p 1 0x186 0x430086
 
 # L3_LAT_CACHE.MISS
 wrmsr -p 1 0x187 0x43412e
