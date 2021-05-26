@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#this setting default for intel core CPUs
+
 #Instructions (Fixed 0)
 #wrmsr -p 1 0x38d 0xb
 

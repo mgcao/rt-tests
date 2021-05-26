@@ -1,3 +1,6 @@
+#!/bin/bash
+
+#this is for Intel core serial CPU
 
 ############# PMC0 ################
 # MEM_LOAD_RETIRED.L2_HIT
@@ -17,7 +20,7 @@ wrmsr -p 1 0x189 0x4320d1
 
 ############# PMC4 ################
 # L2_RQSTS.REF
-wrmsr -p 1 0x18a 0x43ff24
+wrmsr -p 1 0x18a 0x43ef24
 
 ############# PMC5 ################
 # L2_RQSTS.MISS
