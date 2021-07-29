@@ -5,32 +5,35 @@
 #Instructions (Fixed 0)
 #wrmsr -p 1 0x38d 0xb
 
+rt_cpu=3
+
 #Instructions (Fixed 0/1/2)
-wrmsr -p 1 0x38d 0xbbb
+wrmsr -p $rt_cpu 0x38d 0xbbb
 
 # L2_RQSTS.MISS
-wrmsr -p 1 0x186 0x433f24
+wrmsr -p $rt_cpu 0x186 0x433f24
 
 # L3_LAT_CACHE.MISS
-wrmsr -p 1 0x187 0x43412e
+wrmsr -p $rt_cpu 0x187 0x43412e
 
-#CYCLE_ACTIVITY.CYCLES_L2_MISS  
-wrmsr -p 1 0x188 0x14301a3
+#CYCLE_ACTIVITY.CYCLES_L2_MISS
+wrmsr -p $rt_cpu 0x188 0x14301a3
 
 # CYCLE_ACTIVITY.STALLS_L2_MISS
-wrmsr -p 1 0x189 0x54305a3
+wrmsr -p $rt_cpu 0x189 0x54305a3
 
-#CYCLE_ACTIVITY.CYCLES_L3_MISS 
-wrmsr -p 1 0x18a 0x24302a3
+#CYCLE_ACTIVITY.CYCLES_L3_MISS
+wrmsr -p $rt_cpu 0x18a 0x24302a3
 
-#CYCLE_ACTIVITY.STALLS_L3_MISS 
-wrmsr -p 1 0x18b 0x64306a3
+#CYCLE_ACTIVITY.STALLS-total
+wrmsr -p $rt_cpu 0x18b 0x44304a3
 
 #CYCLE_ACTIVITY.CYCLES_L1D_MISS
-wrmsr -p 1 0x18c 0x84308a3
+wrmsr -p $rt_cpu 0x18c 0x84308a3
 
 #CYCLE_ACTIVITY.STALLS_L1D_MISS
-wrmsr -p 1 0x18d 0x0c430ca3
+wrmsr -p $rt_cpu 0x18d 0x0c430ca3
+
 
 #CYCLE_ACTIVITY.CYCLES_MEM_ANY
 #wrmsr -p 1 0x18c 0x104310a3

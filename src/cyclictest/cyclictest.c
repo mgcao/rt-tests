@@ -290,6 +290,7 @@ static uint32_t	ignore_times = 0;
 //used to control if sample vmexit and DRAM if can't dynamically check
 #define JUST_SAMPLE_PMC 1
 
+static int default_pmc_cpu = PMC_ON_CPU;
 static uint32_t min_time_check = MIN_IGNORE_TIME;
 static uint32_t max_time_check = MAX_CHECK_TIME;
 static uint32_t random_sample_count = 0;
@@ -995,7 +996,7 @@ static void init_extra_sampling(void)
 		return;
 
 	//current set fixed cpu PMC_ON_CPU
-	has_pmc_info = pmc_init(PMC_ON_CPU);
+	has_pmc_info = pmc_init(default_pmc_cpu);
 	if (!has_pmc_info) {
 		perror("PMU can't count!\n");
 	}
@@ -1015,10 +1016,10 @@ static void init_extra_sampling(void)
 	//start counter
 	if (has_pmc_info) {
 #if USE_POST_PMC		
-	pmc_post_start(PMC_ON_CPU);
+	pmc_post_start(default_pmc_cpu);
 	printf("Post PMC build, note: need run PMC script first!\n");
 #else
-	pmc_start(PMC_ON_CPU);
+	pmc_start(default_pmc_cpu);
 	printf("normal PMC build!\n");
 #endif
 	}
@@ -1127,9 +1128,9 @@ static void output_extra_sample(void)
 {
 	if (has_pmc_info) {
 #if USE_POST_PMC		
-	pmc_post_stop(PMC_ON_CPU);
+	pmc_post_stop(default_pmc_cpu);
 #else
-	pmc_stop(PMC_ON_CPU);
+	pmc_stop(default_pmc_cpu);
 #endif
 	}
 
@@ -2417,6 +2418,8 @@ int main(int argc, char **argv)
 
 	process_options(argc, argv, max_cpus);
 
+	//for PMC data profiling
+	default_pmc_cpu = cpu_for_thread(0, max_cpus);
 	init_extra_sampling();
 
 	if (check_privs())
