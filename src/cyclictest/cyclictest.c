@@ -2419,7 +2419,7 @@ int main(int argc, char **argv)
 	process_options(argc, argv, max_cpus);
 
 	//for PMC data profiling
-	default_pmc_cpu = cpu_for_thread(0, max_cpus);
+	default_pmc_cpu = (affinity_mask) ? cpu_for_thread(0, max_cpus) : 0;
 	init_extra_sampling();
 
 	if (check_privs())
