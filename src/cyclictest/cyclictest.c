@@ -45,6 +45,8 @@
 #include "dram_counter.h"
 #include "acrn_vmexit.h"
 
+#include "msr.h"
+
 #include <bionic.h>
 
 #define DEFAULT_INTERVAL 1000
@@ -296,6 +298,7 @@ static uint32_t max_time_check = MAX_CHECK_TIME;
 static uint32_t random_sample_count = 0;
 static uint32_t random_count_interval = 1000;
 static uint64_t next_random_sample = 0;
+static uint32_t extra_sleep = 0;
 
 /* Latency trick
  * if the file /dev/cpu_dma_latency exists,
@@ -1569,6 +1572,7 @@ static void display_help(int error)
 		   "	 --random_sample   set sample data in period counts\n"
 		   "	 --min_check [min-time(ns)]  set to sample extra info: min-check time\n"
 		   "	 --max_check [max-time(ns)]  set to sample extra info: max-check time\n",
+		   "	 --extra_sleep (N-seconds) set to sleep time before test\n",
 	       tracers
 		);
 	if (error)
@@ -1698,6 +1702,7 @@ enum option_values {
 	OPT_WAKEUPRT, OPT_DBGCYCLIC, OPT_POLICY, OPT_HELP, OPT_NUMOPTS,
 	OPT_ALIGNED, OPT_SECALIGNED, OPT_LAPTOP, OPT_SMI, OPT_TRACEMARK,
 	OPT_EXTRA_SAMPLE, OPT_MIN_CHECK, OPT_MAX_CHECK, OPT_RANDOM_SAMPLE,
+	OPT_EXTRA_SLEEP,
 };
 
 /* Process commandline options */
@@ -1765,6 +1770,7 @@ static void process_options (int argc, char *argv[], int max_cpus)
 			{"min_check",        required_argument, NULL, OPT_MIN_CHECK},
 			{"max_check",        required_argument, NULL, OPT_MAX_CHECK},
 			{"random_sample",    required_argument, NULL, OPT_RANDOM_SAMPLE},
+			{"extra_sleep",      required_argument, NULL, OPT_EXTRA_SLEEP},
 			{"help",             no_argument,       NULL, OPT_HELP },
 			{NULL, 0, NULL, 0}
 		};
@@ -2014,7 +2020,9 @@ static void process_options (int argc, char *argv[], int max_cpus)
 		case OPT_RANDOM_SAMPLE:
 			random_sample_count = atoi(optarg);
 			break;
-		
+		case OPT_EXTRA_SLEEP:
+			extra_sleep = atoi(optarg);
+			break;
 		}
 	}
 
@@ -2418,9 +2426,14 @@ int main(int argc, char **argv)
 
 	process_options(argc, argv, max_cpus);
 
+	if (extra_sleep > 0)
+		sleep(extra_sleep);
+	
 	//for PMC data profiling
 	default_pmc_cpu = (affinity_mask) ? cpu_for_thread(0, max_cpus) : 0;
 	init_extra_sampling();
+
+	printf("0xc8f value = 0x%lx, cpu=%d\n", rdmsr_on_cpu(0xc8f, default_pmc_cpu), default_pmc_cpu);
 
 	if (check_privs())
 		exit(EXIT_FAILURE);
