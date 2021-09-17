@@ -996,7 +996,7 @@ static void init_extra_sampling(void)
 		return;
 
 	//current set fixed cpu PMC_ON_CPU
-	has_pmc_info = pmc_init(default_pmc_cpu);
+	has_pmc_info = pmc_init();
 	if (!has_pmc_info) {
 		perror("PMU can't count!\n");
 	}
@@ -1014,14 +1014,9 @@ static void init_extra_sampling(void)
 #endif
 
 	//start counter
-	if (has_pmc_info) {
-#if USE_POST_PMC		
-	pmc_post_start(default_pmc_cpu);
-	printf("Post PMC build, note: need run PMC script first!\n");
-#else
-	pmc_start(default_pmc_cpu);
-	printf("normal PMC build!\n");
-#endif
+	if (has_pmc_info) {	
+		pmc_start_counting(default_pmc_cpu);
+		printf("Post PMC build, note: need run PMC script first!\n");
 	}
 
 	buf_offset = 0;
@@ -1051,15 +1046,9 @@ static void pre_extra_sample(uint64_t *cache_refs, uint64_t *misses)
 	}
 
 	if (has_pmc_info) {
-	#if USE_POST_PMC
 		*cache_refs = 0;
 		*misses = 0;
-		pmc_post_read_start();
-	#else
-		pmc_read_start();
-		*cache_refs = pmc_get_cache_refs();
-		*misses = pmc_get_cache_misses();
-	#endif
+		pmc_pre_read();
 	}
 }
 
@@ -1070,26 +1059,19 @@ static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t lat
 
 	if (has_pmc_info) {
 	
-	#if USE_POST_PMC
-	//	uint64_t now_refs = 0;
 		uint64_t now_misses = 0;
-		pmc_post_read_stop();
-	#else
-		//uint64_t now_refs = pmc_get_cache_refs();
-		uint64_t now_misses = pmc_get_cache_misses();
-		pmc_read_stop();
-	#endif
-
+		pmc_post_read();
+	
 		bool sampled_pmc = false;
 
 		//for ramdom sample,  if random sample set, ingore min/max setting
 		if ((random_sample_count > 0) && (next_random_sample == cycles) && (buf_offset < INFO_BUF_SIZE_LIMIT)) {
-		#if USE_POST_PMC
-			int size = pmc_post_dump_info(extra_info_buf + buf_offset, cycles, latency);
+
+			int size = pmc_dump_delta_info(extra_info_buf + buf_offset, cycles, latency);
 			buf_offset += size;
 			next_random_sample += random_count_interval;
 			sampled_pmc = true;
-		#endif	
+	
 		} else
 		//if diff < min time, not output
 		if (latency < min_time_check) {
@@ -1097,13 +1079,8 @@ static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t lat
 
 		} else if (((latency > max_time_check) || (now_misses > misses)) && (buf_offset < INFO_BUF_SIZE_LIMIT)) {
 
-		#if USE_POST_PMC
-			int size = pmc_post_dump_info(extra_info_buf + buf_offset, cycles, latency);
-		#else
-			//int size = sprintf(extra_info_buf + buf_offset, "cycles:%lu, latency:%lu cache-refs/misses:%lu /%lu\n", 
-			//	cycles, latency, now_refs - cache_refs, now_misses - misses);
-			int size = pmc_dump_info(extra_info_buf + buf_offset, cycles, latency);
-		#endif
+			int size = pmc_dump_delta_info(extra_info_buf + buf_offset, cycles, latency);
+
 			buf_offset += size;
 			sampled_pmc = true;
 		} 
@@ -1126,12 +1103,8 @@ static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t lat
 
 static void output_extra_sample(void)
 {
-	if (has_pmc_info) {
-#if USE_POST_PMC		
-	pmc_post_stop(default_pmc_cpu);
-#else
-	pmc_stop(default_pmc_cpu);
-#endif
+	if (has_pmc_info) {	
+		pmc_stop_counting(default_pmc_cpu);
 	}
 
 	if (buf_offset >= INFO_BUF_SIZE_LIMIT) {
@@ -1140,13 +1113,14 @@ static void output_extra_sample(void)
 	}
 
 	if (ignore_times > 0) {
-		int size = sprintf(extra_info_buf + buf_offset, "cache misses ignore times: %u, level(ns): %u\n",
+		int size = sprintf(extra_info_buf + buf_offset, "\ncache misses ignore times: %u, level(ns): %u\n",
 			ignore_times, min_time_check);
 		buf_offset += size;
 	}
 
 	if (buf_offset > 0) {
 		fputs(extra_info_buf, stdout);
+		fputs("\n", stdout);
 	}
 }
 
@@ -1278,7 +1252,7 @@ static void *timerthread(void *param)
 	}
 
 	stat->threadstarted++;
-	
+
 	while (!shutdown) {
 
 		uint64_t diff;
@@ -2420,6 +2394,7 @@ int main(int argc, char **argv)
 
 	//for PMC data profiling
 	default_pmc_cpu = (affinity_mask) ? cpu_for_thread(0, max_cpus) : 0;
+	
 	init_extra_sampling();
 
 	if (check_privs())
