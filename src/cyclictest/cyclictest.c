@@ -44,6 +44,7 @@
 #include "pmc.h"
 #include "dram_counter.h"
 #include "acrn_vmexit.h"
+#include "uncore.h"
 
 #include <bionic.h>
 
@@ -281,7 +282,6 @@ static bool has_vmexit = false;
 #define INFO_BUF_SIZE_LIMIT  (INFO_BUF_SIZE - 256)
 static char extra_info_buf[INFO_BUF_SIZE];
 static uint32_t	buf_offset = 0;
-static uint32_t	ignore_times = 0;
 
 #define PMC_ON_CPU 1
 #define MIN_IGNORE_TIME 2000 // ignore 5us records
@@ -1020,7 +1020,6 @@ static void init_extra_sampling(void)
 	}
 
 	buf_offset = 0;
-	ignore_times = 0;
 
 	//for ramdom sampling
 	if (random_sample_count > 0) {
@@ -1029,10 +1028,14 @@ static void init_extra_sampling(void)
 		}
 	} 
 
+	//for uncore 
+	uncore_init(default_pmc_cpu);
+	uncore_start_counting();
+
 	printf("random_sample_count: %d, interval: %d\n", random_sample_count, random_count_interval);
 }
 
-static void pre_extra_sample(uint64_t *cache_refs, uint64_t *misses)
+static void pre_extra_sample(void)
 {
 	if (ignore_extra_sample)
 		return;
@@ -1046,21 +1049,21 @@ static void pre_extra_sample(uint64_t *cache_refs, uint64_t *misses)
 	}
 
 	if (has_pmc_info) {
-		*cache_refs = 0;
-		*misses = 0;
 		pmc_pre_read();
 	}
+
+	uncore_pre_read();
 }
 
-static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t latency, uint64_t cycles)
+static void post_extra_sample(uint64_t latency, uint64_t cycles)
 {
 	if (ignore_extra_sample)
 		return;
 
 	if (has_pmc_info) {
 	
-		uint64_t now_misses = 0;
 		pmc_post_read();
+		uncore_post_read();
 	
 		bool sampled_pmc = false;
 
@@ -1069,19 +1072,20 @@ static void post_extra_sample(uint64_t cache_refs, uint64_t misses, uint64_t lat
 
 			int size = pmc_dump_delta_info(extra_info_buf + buf_offset, cycles, latency);
 			buf_offset += size;
+
+			size = uncore_dump_delta_info(extra_info_buf + buf_offset);
+			buf_offset += size;
 			next_random_sample += random_count_interval;
 			sampled_pmc = true;
 	
-		} else
-		//if diff < min time, not output
-		if (latency < min_time_check) {
-			ignore_times++;
-
-		} else if (((latency > max_time_check) || (now_misses > misses)) && (buf_offset < INFO_BUF_SIZE_LIMIT)) {
+		} else if ((latency > max_time_check) && (buf_offset < INFO_BUF_SIZE_LIMIT)) {
 
 			int size = pmc_dump_delta_info(extra_info_buf + buf_offset, cycles, latency);
-
 			buf_offset += size;
+			
+			size = uncore_dump_delta_info(extra_info_buf + buf_offset);
+			buf_offset += size;
+
 			sampled_pmc = true;
 		} 
 
@@ -1107,14 +1111,10 @@ static void output_extra_sample(void)
 		pmc_stop_counting(default_pmc_cpu);
 	}
 
+	uncore_stop_counting();
+
 	if (buf_offset >= INFO_BUF_SIZE_LIMIT) {
 		int size = sprintf(extra_info_buf + buf_offset, "\n!too much log saved, buffer to overflow!!!\n");
-		buf_offset += size;
-	}
-
-	if (ignore_times > 0) {
-		int size = sprintf(extra_info_buf + buf_offset, "\ncache misses ignore times: %u, level(ns): %u\n",
-			ignore_times, min_time_check);
 		buf_offset += size;
 	}
 
@@ -1258,10 +1258,8 @@ static void *timerthread(void *param)
 		uint64_t diff;
 		unsigned long diff_smi = 0;
 		int sigs, ret;
-
-		uint64_t cache_refs = 0, misses = 0;
 		
-		pre_extra_sample(&cache_refs, &misses);
+		pre_extra_sample();
 	
 		/* Wait for next period */
 		switch (par->mode) {
@@ -1378,7 +1376,7 @@ static void *timerthread(void *param)
 				stat->smis[stat->cycles & par->bufmsk] = diff_smi;
 		}
 
-		post_extra_sample(cache_refs, misses, diff, stat->cycles);
+		post_extra_sample(diff, stat->cycles);
 
 		/* Update the histogram */
 		if (histogram) {
