@@ -27,21 +27,23 @@
 uint64_t rdmsr_on_cpu(uint32_t reg, int cpu)
 {
 	uint64_t data;
-	int fd;
+	static int fd = -1;
 	char msr_file_name[64];
 
 	sprintf(msr_file_name, "/dev/cpu/%d/msr", cpu);
-	fd = open(msr_file_name, O_RDONLY);
-	if (fd < 0) {
-		if (errno == ENXIO) {
-			fprintf(stderr, "rdmsr: No CPU %d, in %s\n", cpu, msr_file_name);
-			exit(2);
-		} else if (errno == EIO) {
-			fprintf(stderr, "rdmsr: CPU %d doesn't support MSRs, in %s\n", cpu, msr_file_name);
-			exit(3);
-		} else {
-			perror("rdmsr: open");
-			exit(127);
+	if (fd == -1) {
+		fd = open(msr_file_name, O_RDONLY);
+		if (fd < 0) {
+			if (errno == ENXIO) {
+				fprintf(stderr, "rdmsr: No CPU %d, in %s\n", cpu, msr_file_name);
+				exit(2);
+			} else if (errno == EIO) {
+				fprintf(stderr, "rdmsr: CPU %d doesn't support MSRs, in %s\n", cpu, msr_file_name);
+				exit(3);
+			} else {
+				perror("rdmsr: open");
+				exit(127);
+			}
 		}
 	}
 
@@ -56,7 +58,7 @@ uint64_t rdmsr_on_cpu(uint32_t reg, int cpu)
 		}
 	}
 
-	close(fd);
+	//close(fd);
 
 	dbg_info("rdmsr: 0x%x, val: 0x%lx\n", reg, data);
 
