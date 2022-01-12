@@ -30,7 +30,7 @@ static const uint32_t group_counters[GROUP_NUM][GROUP_COUNTERS] = {//{0xc1, 0xc2
                                                             //    {0x709, 0x719, 0x729, 0x739}};
 
 //total calc: group: 4, arb: 2, fixed: 1, 5 kinds of data
-#define UNC_DATA_TYPES 5
+#define UNC_DATA_TYPES 11
 static uint64_t g_unc_start[UNC_DATA_TYPES];
 static uint64_t g_unc_stop[UNC_DATA_TYPES];
 static uint64_t g_unc_delta[UNC_DATA_TYPES];
@@ -61,17 +61,17 @@ void uncore_pre_read(void)
 {
 
     for (int i = 0; i < GROUP_NUM; i++) {
-        g_unc_start[i] = read_uncore_msr(group_counters[i][0]);
+        //g_unc_start[i] = read_uncore_msr(group_counters[i][0]);
     
-        for (int j = 1; j < GROUP_COUNTERS; j++) {
-            g_unc_start[i] += read_uncore_msr(group_counters[i][j]);
+        for (int j = 0; j < GROUP_COUNTERS; j++) {
+            g_unc_start[i * GROUP_COUNTERS + j] = read_uncore_msr(group_counters[i][j]);
         }
     }
 
-    g_unc_start[GROUP_NUM] = read_uncore_msr(MSR_UNC_ARB_PERFCTR0_0);
-    g_unc_start[GROUP_NUM + 1] = read_uncore_msr(MSR_UNC_ARB_PERFCTR0_1);
+    g_unc_start[8] = read_uncore_msr(MSR_UNC_ARB_PERFCTR0_0);
+    g_unc_start[9] = read_uncore_msr(MSR_UNC_ARB_PERFCTR0_1);
 
-    g_unc_start[GROUP_NUM + 2] = read_uncore_msr(MSR_UNC_PERF_FIXED_CTR);
+    g_unc_start[10] = read_uncore_msr(MSR_UNC_PERF_FIXED_CTR);
 
 }
 
@@ -79,17 +79,17 @@ void uncore_post_read(void)
 {
 
     for (int i = 0; i < GROUP_NUM; i++) {
-        g_unc_stop[i] = read_uncore_msr(group_counters[i][0]);
+        //g_unc_stop[i] = read_uncore_msr(group_counters[i][0]);
     
-        for (int j = 1; j < GROUP_COUNTERS; j++) {
-            g_unc_stop[i] += read_uncore_msr(group_counters[i][j]);
+        for (int j = 0; j < GROUP_COUNTERS; j++) {
+            g_unc_stop[i * GROUP_COUNTERS + j] = read_uncore_msr(group_counters[i][j]);
         }
     }
 
-    g_unc_stop[GROUP_NUM] = read_uncore_msr(MSR_UNC_ARB_PERFCTR0_0);
-    g_unc_stop[GROUP_NUM + 1] = read_uncore_msr(MSR_UNC_ARB_PERFCTR0_1);
+    g_unc_stop[8] = read_uncore_msr(MSR_UNC_ARB_PERFCTR0_0);
+    g_unc_stop[9] = read_uncore_msr(MSR_UNC_ARB_PERFCTR0_1);
 
-    g_unc_stop[GROUP_NUM + 2] = read_uncore_msr(MSR_UNC_PERF_FIXED_CTR);
+    g_unc_stop[10] = read_uncore_msr(MSR_UNC_PERF_FIXED_CTR);
 
     for (int i = 0; i < UNC_DATA_TYPES; i++) {
         g_unc_delta[i] = g_unc_stop[i] - g_unc_start[i];

@@ -29,10 +29,10 @@ wrmsr -p $rt_cpu  0xE01  0
 
 #CBO 0-3 preset-0/1: bit22: EN, bit18: cycles/occurs, bit0-15: event/mask
 #for all counters 0:
-cbo_evt_0=0x00404122
-cbo_evt_1=0x00408122
-cbo_evt_2=0x00402134
-cbo_evt_3=0x00408134
+cbo_evt_0=0x00404422
+cbo_evt_1=0x00404822
+#cbo_evt_2=0x00404122        # no data: 0x00402134
+#cbo_evt_3=0x00408122		# no data: 0x00408134
 
 wrmsr -p $rt_cpu  0x700 $cbo_evt_0   #CBO-0  
 wrmsr -p $rt_cpu  0x710 $cbo_evt_0   #CBO-1
@@ -46,22 +46,22 @@ wrmsr -p $rt_cpu  0x721 $cbo_evt_1   #CBO-2
 wrmsr -p $rt_cpu  0x731 $cbo_evt_1   #CBO-3
 
 #for all counters 2:
-wrmsr -p $rt_cpu  0x702 $cbo_evt_2   #CBO-0
-wrmsr -p $rt_cpu  0x712 $cbo_evt_2   #CBO-1
-wrmsr -p $rt_cpu  0x722 $cbo_evt_2   #CBO-2
-wrmsr -p $rt_cpu  0x732 $cbo_evt_2   #CBO-3
+#wrmsr -p $rt_cpu  0x702 $cbo_evt_2   #CBO-0
+#wrmsr -p $rt_cpu  0x712 $cbo_evt_2   #CBO-1
+#wrmsr -p $rt_cpu  0x722 $cbo_evt_2   #CBO-2
+#wrmsr -p $rt_cpu  0x732 $cbo_evt_2   #CBO-3
 
 #for all counters 3:
-wrmsr -p $rt_cpu  0x703 $cbo_evt_3   #CBO-0
-wrmsr -p $rt_cpu  0x713 $cbo_evt_3   #CBO-1
-wrmsr -p $rt_cpu  0x723 $cbo_evt_3   #CBO-2
-wrmsr -p $rt_cpu  0x733 $cbo_evt_3   #CBO-3
+#wrmsr -p $rt_cpu  0x703 $cbo_evt_3   #CBO-0
+#wrmsr -p $rt_cpu  0x713 $cbo_evt_3   #CBO-1
+#wrmsr -p $rt_cpu  0x723 $cbo_evt_3   #CBO-2
+#wrmsr -p $rt_cpu  0x733 $cbo_evt_3   #CBO-3
 
 #for arb-0:
-wrmsr -p $rt_cpu  0x3B2  0x00440181 #UNC_ARB_TRK_REQUESTS.ALL
+wrmsr -p $rt_cpu  0x3B2 0x00400180   #0x00440181 #UNC_ARB_TRK_REQUESTS.ALL
 
 #for arb-1:
-wrmsr -p $rt_cpu  0x3B3 0x00440184 #UNC_ARB_COH_TRK_REQUESTS.ALL
+wrmsr -p $rt_cpu  0x3B3 0x00400281  # no data: 0x00440184 #UNC_ARB_COH_TRK_REQUESTS.ALL
 
 #fixed ctrl - local, bit22
 wrmsr -p $rt_cpu  0x394  0x00400000
@@ -69,4 +69,4 @@ wrmsr -p $rt_cpu  0x394  0x00400000
 #--------------uncore above-------------------------
 
 #echo -e "Latency Times Inst Cycles Tsc L2-Miss L3-Miss Stalls-L2 Stalls-L3 Offcore-AllReq Offcore-allDataRD Offcore-RD-Cycles Offcore-RFO"
-echo -e "Latency Times Inst Cycles Tsc L2-Miss L3-Miss Stalls-L2 Offcore-allDataRD cbo-0 cbo-1 cbo-2 cbo-3 u-clk"
+echo -e "Latency Times Inst Cycles Tsc L2-Miss L3-Miss Stalls-L2 Offcore-allDataRD cbo-0 cbo-1 arb-0 arb-1 u-clk"
